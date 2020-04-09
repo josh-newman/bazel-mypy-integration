@@ -1,3 +1,4 @@
+load("@bazel_skylib//lib:collections.bzl", "collections")
 load("@bazel_skylib//lib:shell.bzl", "shell")
 load("//:rules.bzl", "MyPyStubsInfo")
 
@@ -22,16 +23,6 @@ DEFAULT_ATTRS = {
         allow_single_file = True,
     ),
 }
-
-def _sources_to_cache_map_triples(srcs):
-    triples_as_flat_list = []
-    for f in srcs:
-        triples_as_flat_list.extend([
-            shell.quote(f.path),
-            shell.quote("{}.meta.json".format(f.path)),
-            shell.quote("{}.data.json".format(f.path)),
-        ])
-    return triples_as_flat_list
 
 def _is_external_dep(dep):
     return dep.label.workspace_root.startswith("external/")
@@ -134,11 +125,23 @@ def _mypy_rule_impl(ctx, is_aspect = False, exe = None, out_path = None):
         substitutions = {
             "{MYPY_EXE}": ctx.executable._mypy_cli.path,
             "{MYPY_ROOT}": ctx.executable._mypy_cli.root.path,
-            "{CACHE_MAP_TRIPLES}": " ".join(_sources_to_cache_map_triples(src_files)),
-            "{SRCS}": " ".join([
-                shell.quote(f.path)
-                for f in src_files
+            "{CACHE_MAP_TRIPLES}": " ".join([
+                f
+                for src_file in src_files
+                for f in [
+                    shell.quote(src_file.path),
+                    shell.quote("{}.meta.json".format(src_file.path)),
+                    shell.quote("{}.data.json".format(src_file.path)),
+                ]
             ]),
+            "{SRCS}": " ".join([
+                shell.quote(src_file.path)
+                for src_file in src_files
+            ]),
+            "{PACKAGE_ROOTS}": " ".join(collections.uniq([
+                "--package-root={}".format(shell.quote(src_file.root.path or "."))
+                for src_file in src_files
+            ])),
             "{VERBOSE_OPT}": "--verbose" if DEBUG else "",
             "{VERBOSE_BASH}": "set -x" if DEBUG else "",
             "{OUTPUT}": out_path if out_path else "",
